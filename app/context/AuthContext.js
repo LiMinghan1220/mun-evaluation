@@ -19,7 +19,9 @@ export function AuthProvider({ children }) {
       const response = await fetch('/api/auth/check');
       if (response.ok) {
         const data = await response.json();
-        setUser(data.user);
+        if (data.authenticated) {
+          setUser(data.user);
+        }
       }
     } catch (error) {
       console.error('Error checking user:', error);
@@ -36,25 +38,27 @@ export function AuthProvider({ children }) {
         body: JSON.stringify({ userId, password }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
+      const data = await response.json();
+
+      if (response.ok && data.success) {
         setUser(data.user);
-        router.push('/dashboard');
         return { success: true };
       } else {
-        const error = await response.json();
-        return { success: false, error: error.message };
+        return { success: false, error: data.error || '登录失败' };
       }
     } catch (error) {
-      return { success: false, error: '登录失败' };
+      console.error('Login error:', error);
+      return { success: false, error: '登录失败，请稍后重试' };
     }
   };
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      setUser(null);
-      router.push('/');
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (response.ok) {
+        setUser(null);
+        router.push('/');
+      }
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -68,15 +72,16 @@ export function AuthProvider({ children }) {
         body: JSON.stringify({ password }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
+      const data = await response.json();
+
+      if (response.ok && data.success) {
         return { success: true, userId: data.userId };
       } else {
-        const error = await response.json();
-        return { success: false, error: error.message };
+        return { success: false, error: data.error || '注册失败' };
       }
     } catch (error) {
-      return { success: false, error: '注册失败' };
+      console.error('Registration error:', error);
+      return { success: false, error: '注册失败，请稍后重试' };
     }
   };
 
