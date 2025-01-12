@@ -3,6 +3,9 @@ import { cookies } from 'next/headers';
 import redis from '@/lib/redis';
 import { verifyToken } from '@/lib/utils';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(request) {
   try {
     // 验证用户身份
@@ -11,23 +14,23 @@ export async function GET(request) {
     
     if (!user) {
       return NextResponse.json(
-        { message: '未登录' },
+        { error: '未登录或会话已过期' },
         { status: 401 }
       );
     }
 
-    // 获取该用户创建的所有评价链接
-    const evaluationIds = await redis.smembers(`user:${user.userId}:evaluations`);
-    
-    const evaluations = await Promise.all(
-      evaluationIds.map(async (id) => {
-        const evaluationJson = await redis.get(`evaluation:${id}`);
-        if (!evaluationJson) return null;
-        
-        const evaluation = JSON.parse(evaluationJson);
-        
-        // 获取该评价链接收到的回复数量
-        const responseCount = await redis.scard(`evaluation:${id}:responses`);
+    // 获取用户的所有评价
+    const evaluations = await redis.hgetall(`user:${user.userId}:evaluations`);
+    if (!evaluations) {
+      return NextResponse.json({ evaluations: [] });
+    }
+
+    // 转换评价数据格式
+    const evaluationsList = await Promise.all(
+      Object.entries(evaluations).map(async ([id, evalJson]) => {
+        const evaluation = JSON.parse(evalJson);
+        const responses = await redis.hgetall(`evaluation:${id}:responses`);
+        const responseCount = responses ? Object.keys(responses).length : 0;
         
         return {
           id,
@@ -38,17 +41,14 @@ export async function GET(request) {
       })
     );
 
-    // 过滤掉已删除的评价
-    const validEvaluations = evaluations.filter(Boolean);
-    
-    // 按创建时间倒序排序
-    validEvaluations.sort((a, b) => b.createdAt - a.createdAt);
+    // 按创建时间排序
+    evaluationsList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    return NextResponse.json({ evaluations: validEvaluations });
+    return NextResponse.json({ evaluations: evaluationsList });
   } catch (error) {
     console.error('List evaluations error:', error);
     return NextResponse.json(
-      { message: '获取评价列表失败' },
+      { error: '获取评价列表失败' },
       { status: 500 }
     );
   }
