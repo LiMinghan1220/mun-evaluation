@@ -4,6 +4,9 @@ import redis from '@/lib/redis';
 import { verifyToken } from '@/lib/utils';
 import OpenAI from 'openai';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: process.env.OPENAI_BASE_URL,
@@ -29,61 +32,43 @@ export async function GET(request) {
     
     if (!user) {
       return NextResponse.json(
-        { message: '未登录' },
+        { error: '未登录或会话已过期' },
         { status: 401 }
       );
     }
 
-    // 获取用户的所有评价回复
-    const responseIds = await redis.smembers(`user:${user.userId}:responses`);
-    
-    const responses = await Promise.all(
-      responseIds.map(async (id) => {
-        const responseJson = await redis.get(`response:${id}`);
-        return responseJson ? JSON.parse(responseJson) : null;
-      })
-    );
-
-    // 过滤掉无效的回复
-    const validResponses = responses.filter(Boolean);
-
-    if (validResponses.length === 0) {
-      return NextResponse.json({
-        summary: "你的故事尚未开始，期待未来的篇章由你执笔书写。",
-        wordCloudData: [],
-        avgRating: 0,
-        totalResponses: 0
-      });
+    // 获取该用户的所有评价
+    const evaluations = await redis.hgetall(`user:${user.id}:evaluations`);
+    if (!evaluations) {
+      return NextResponse.json({ evaluations: [], summary: '', wordCloudData: [] });
     }
 
-    // 获取缓存的平均分
-    const avgRating = parseFloat(await redis.get(`user:${user.userId}:avgRating`) || "0");
-
-    // 获取委员会词云数据
-    const committeesWithScores = await redis.zrange(`user:${user.userId}:committees`, 0, -1, "WITHSCORES");
-    const wordCloudData = [];
-    for (let i = 0; i < committeesWithScores.length; i += 2) {
-      wordCloudData.push({
-        text: committeesWithScores[i],
-        value: parseInt(committeesWithScores[i + 1])
-      });
+    // 获取所有评价的响应
+    const responses = [];
+    for (const evalId of Object.keys(evaluations)) {
+      const evalResponses = await redis.hgetall(`evaluation:${evalId}:responses`);
+      if (evalResponses) {
+        responses.push(...Object.values(evalResponses).map(r => JSON.parse(r)));
+      }
     }
 
-    // 构建更有文学性的提示
-    const evaluations = validResponses.map(r => r.message).join("\\n");
-    const userPrompt = `基于以下评价：\\n${evaluations}\\n\\n请用优美的散文勾勒这个人的形象，突出特点，委婉指出不足，并给出建议。`;
+    if (responses.length === 0) {
+      return NextResponse.json({ evaluations: [], summary: '', wordCloudData: [] });
+    }
 
+    // 计算平均分
+    const ratings = responses.map(r => r.rating);
+    const avgRating = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+
+    // 提取所有评价文本
+    const comments = responses.map(r => r.comment).join('\n');
+
+    // 使用 AI 生成总结
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL,
       messages: [
-        {
-          role: "system",
-          content: SYSTEM_PROMPT
-        },
-        {
-          role: "user",
-          content: userPrompt
-        }
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: comments }
       ],
       temperature: 0.7,
       max_tokens: 500
@@ -91,25 +76,29 @@ export async function GET(request) {
 
     const summary = completion.choices[0].message.content;
 
-    // 格式化评价列表，添加时间戳
-    const formattedResponses = validResponses.map(response => ({
-      message: response.message,
-      timestamp: response.timestamp || new Date(response.created_at).toISOString(),
-      committee: response.committee || '未指定委员会',
-      rating: response.rating || 0
-    })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    // 生成词云数据
+    const committees = responses.map(r => r.committee);
+    const wordCloudData = committees.reduce((acc, committee) => {
+      const found = acc.find(item => item.text === committee);
+      if (found) {
+        found.value += 1;
+      } else {
+        acc.push({ text: committee, value: 1 });
+      }
+      return acc;
+    }, []);
 
     return NextResponse.json({
+      totalResponses: responses.length,
+      averageRating: avgRating.toFixed(1),
       summary,
-      wordCloudData,
-      avgRating,
-      totalResponses: validResponses.length,
-      responses: formattedResponses
+      wordCloudData
     });
+
   } catch (error) {
     console.error('Get results summary error:', error);
     return NextResponse.json(
-      { message: '获取结果总结失败' },
+      { error: '获取评价总结失败' },
       { status: 500 }
     );
   }
