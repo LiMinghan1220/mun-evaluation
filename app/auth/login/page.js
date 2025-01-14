@@ -20,13 +20,17 @@ export default function Login() {
     setLoading(true);
 
     try {
+      console.log('Submitting login form:', { userId });
       const result = await login(userId, password);
+      console.log('Login result:', result);
+
       if (result.success) {
         await router.push('/dashboard');
       } else {
         setError(result.error || '登录失败');
       }
     } catch (error) {
+      console.error('Login form error:', error);
       setError('登录失败，请稍后重试');
     } finally {
       setLoading(false);
@@ -79,7 +83,15 @@ export default function Login() {
             </div>
 
             {error && (
-              <div className="text-red-500 text-sm mt-2">{error}</div>
+              <div className="rounded-md bg-red-50 p-4">
+                <div className="flex">
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">
+                      {error}
+                    </h3>
+                  </div>
+                </div>
+              </div>
             )}
 
             <div>

@@ -32,16 +32,21 @@ export function AuthProvider({ children }) {
 
   const login = async (userId, password) => {
     try {
+      console.log('Attempting login with:', { userId });
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, password }),
       });
 
+      console.log('Login response status:', response.status);
       const data = await response.json();
+      console.log('Login response data:', data);
 
       if (response.ok && data.success) {
         setUser(data.user);
+        router.push('/dashboard');
         return { success: true };
       } else {
         return { success: false, error: data.error || '登录失败' };
@@ -66,13 +71,17 @@ export function AuthProvider({ children }) {
 
   const register = async (password) => {
     try {
+      console.log('Attempting registration');
+
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
 
+      console.log('Registration response status:', response.status);
       const data = await response.json();
+      console.log('Registration response data:', data);
 
       if (response.ok && data.success) {
         return { success: true, userId: data.userId };
