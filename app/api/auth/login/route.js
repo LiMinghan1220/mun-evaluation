@@ -29,34 +29,22 @@ export async function POST(request) {
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
-      return NextResponse.json(
-        { success: false, error: '获取用户数据失败' },
-        { status: 500 }
-      );
+      throw new Error('获取用户数据失败');
     }
 
     // 解析用户数据
     let user;
     try {
       user = JSON.parse(userJson);
-      if (!user || typeof user !== 'object') {
-        throw new Error('Invalid user data format');
-      }
     } catch (error) {
       console.error('Error parsing user data:', error);
-      return NextResponse.json(
-        { success: false, error: '用户数据格式错误' },
-        { status: 500 }
-      );
+      throw new Error('用户数据格式错误');
     }
 
     // 验证用户数据
-    if (!user.id || !user.password) {
-      console.error('Invalid user data structure:', user);
-      return NextResponse.json(
-        { success: false, error: '用户数据不完整' },
-        { status: 500 }
-      );
+    if (!user || typeof user !== 'object' || !user.id || !user.password) {
+      console.error('Invalid user data:', user);
+      throw new Error('用户数据不完整');
     }
 
     // 验证密码
@@ -70,10 +58,7 @@ export async function POST(request) {
       }
     } catch (error) {
       console.error('Password comparison error:', error);
-      return NextResponse.json(
-        { success: false, error: '密码验证失败' },
-        { status: 500 }
-      );
+      throw new Error('密码验证失败');
     }
 
     // 生成 JWT token
@@ -102,7 +87,7 @@ export async function POST(request) {
     return NextResponse.json(
       { 
         success: false,
-        error: '登录失败，请稍后重试'
+        error: error.message || '登录失败，请稍后重试'
       },
       { status: 500 }
     );

@@ -25,9 +25,15 @@ export async function POST(request) {
 
     while (!isUnique && attempts < maxAttempts) {
       userId = generateUniqueId();
-      const existingUser = await redis.get(`user:${userId}`);
-      if (!existingUser) {
-        isUnique = true;
+      try {
+        const exists = await redis.exists(`user:${userId}`);
+        if (!exists) {
+          isUnique = true;
+        }
+      } catch (error) {
+        console.error('Error checking user existence:', error);
+        attempts++;
+        continue;
       }
       attempts++;
     }
@@ -40,18 +46,15 @@ export async function POST(request) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // 创建新用户
-    const user = {
+    const userData = JSON.stringify({
       id: userId,
       password: hashedPassword,
       createdAt: new Date().toISOString()
-    };
+    });
 
     // 存储用户数据
     try {
-      const result = await redis.set(`user:${userId}`, JSON.stringify(user));
-      if (!result) {
-        throw new Error('存储用户数据失败');
-      }
+      await redis.set(`user:${userId}`, userData);
     } catch (error) {
       console.error('Error storing user data:', error);
       throw new Error('注册失败，请稍后重试');
