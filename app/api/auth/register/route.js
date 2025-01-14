@@ -12,7 +12,7 @@ export async function POST(request) {
     
     if (!password) {
       return NextResponse.json(
-        { error: '密码不能为空' },
+        { success: false, error: '密码不能为空' },
         { status: 400 }
       );
     }
@@ -46,17 +46,27 @@ export async function POST(request) {
       createdAt: new Date().toISOString()
     };
 
-    await redis.set(`user:${userId}`, JSON.stringify(user));
+    // 存储用户数据
+    try {
+      const result = await redis.set(`user:${userId}`, JSON.stringify(user));
+      if (!result) {
+        throw new Error('存储用户数据失败');
+      }
+    } catch (error) {
+      console.error('Error storing user data:', error);
+      throw new Error('注册失败，请稍后重试');
+    }
 
     // 生成 JWT token
     const token = generateToken({ id: userId });
 
-    // 设置 cookie
+    // 创建响应
     const response = NextResponse.json(
       { success: true, userId },
       { status: 201 }
     );
 
+    // 设置 cookie
     response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -71,7 +81,7 @@ export async function POST(request) {
     return NextResponse.json(
       { 
         success: false,
-        error: error.message || '注册失败，请稍后重试' 
+        error: error.message || '注册失败，请稍后重试'
       },
       { status: 500 }
     );
