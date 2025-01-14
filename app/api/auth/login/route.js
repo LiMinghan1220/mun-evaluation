@@ -18,10 +18,10 @@ export async function POST(request) {
     }
 
     // 获取用户信息
-    let userJson;
+    let user;
     try {
-      userJson = await redis.get(`user:${userId}`);
-      if (!userJson) {
+      user = await redis.get(`user:${userId}`);
+      if (!user) {
         return NextResponse.json(
           { success: false, error: '用户不存在' },
           { status: 401 }
@@ -30,15 +30,6 @@ export async function POST(request) {
     } catch (error) {
       console.error('Error fetching user data:', error);
       throw new Error('获取用户数据失败');
-    }
-
-    // 解析用户数据
-    let user;
-    try {
-      user = JSON.parse(userJson);
-    } catch (error) {
-      console.error('Error parsing user data:', error);
-      throw new Error('用户数据格式错误');
     }
 
     // 验证用户数据

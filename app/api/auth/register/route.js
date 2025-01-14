@@ -46,15 +46,18 @@ export async function POST(request) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // 创建新用户
-    const userData = JSON.stringify({
+    const user = {
       id: userId,
       password: hashedPassword,
       createdAt: new Date().toISOString()
-    });
+    };
 
     // 存储用户数据
     try {
-      await redis.set(`user:${userId}`, userData);
+      const success = await redis.set(`user:${userId}`, user);
+      if (!success) {
+        throw new Error('存储用户数据失败');
+      }
     } catch (error) {
       console.error('Error storing user data:', error);
       throw new Error('注册失败，请稍后重试');
